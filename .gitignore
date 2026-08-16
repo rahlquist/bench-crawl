@@ -1,0 +1,45 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+results/
+*.egg-info/
+.DS_Store
+
+# Local configuration may contain private LAN endpoints or credentials.
+config.local.toml
+.env
+.env.*
+!.env.example
+
+# Benchmark checkouts and large local datasets.
+deep-swe/
+tau-bench/
+SWE-bench_Pro-os/
+benchmarks/
+models/
+
+# Local editor and OS files.
+.vscode/
+.idea/
+*.swp
+*[1m~[0m
+
+# Keep the example configuration tracked.
+!.env.example
+!.github/
+!.github/workflows/
+
+# Do not publish local endpoint configuration.
+config.toml
+config.local.toml
+
+# Keep the repository's source and docs; runtime reports stay local.
+results/
+
+# Generated build artifacts.
+dist/
+build/
+*.egg-info/
