@@ -73,11 +73,12 @@ def cmd_run(args) -> int:
     if not pf.ok:
         print(f"preflight blocked: {len(pf.blocked)} benchmark(s)")
     results = core.run_benchmarks(names, cfg, pf)
-    from .report import write_report
+    from .report import write_all_reports
 
-    rpath = write_report(cfg, results)
+    rpath, csv_path = write_all_reports(cfg, results)
     print(f"report: {rpath}")
     print(f"raw:    {cfg.results_dir / 'latest.json'}")
+    print(f"csv:    {csv_path}")
     for name in sorted(results):
         r = results[name]
         metric = f" {r.metric_name}={r.metric_value:.4f}" if r.metric_value is not None else ""
@@ -95,10 +96,11 @@ def cmd_report(args) -> int:
     from .adapters.base import AdapterResult
 
     results = {k: AdapterResult(**v) for k, v in data["benchmarks"].items()}
-    from .report import write_report
+    from .report import write_all_reports
 
-    rpath = write_report(cfg, results)
+    rpath, csv_path = write_all_reports(cfg, results)
     print(f"report: {rpath}")
+    print(f"csv:    {csv_path}")
     return 0
 
 

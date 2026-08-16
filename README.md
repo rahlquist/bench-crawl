@@ -142,10 +142,13 @@ results/
 
 - `latest.json`: normalized machine-readable results.
 - `report.md`: human-readable summary.
+- `benchmark-results-<model>.csv`: one detailed row per benchmark, named with the model identifier.
 - `<benchmark>/<run-id>/harness.log`: combined stdout and stderr.
 - Official harness output remains alongside the relevant run when the harness supports it.
 
 Generated results are excluded from Git.
+
+The CSV contains stable benchmark/status/metric/score/error fields, flattened scalar fields from each adapter's detail payload, and the complete nested `detail_json` payload. It is generated after `benchsuite run` and by `benchsuite report`.
 
 ## Benchmark notes
 
