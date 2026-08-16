@@ -61,6 +61,9 @@ class FoodTruckAdapter(BenchmarkAdapter):
         path.write_text(json.dumps(payload, indent=2))
         return path
 
+    def extra_preflight_failures(self) -> list[str]:
+        return []
+
     def parse(self, out_dir: Path, log: str) -> AdapterResult:
         # A prior submission bundle may already carry a measured result.
         for cand in sorted(self.results_dir.glob("foodtruck/**/*.json")):

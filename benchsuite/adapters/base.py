@@ -66,6 +66,10 @@ class BenchmarkAdapter(abc.ABC):
                 return False
         return True
 
+    def extra_preflight_failures(self) -> list[str]:
+        """Return adapter-specific dependency failures beyond executables."""
+        return []
+
     # -- execution ---------------------------------------------------------
     @abc.abstractmethod
     def build_command(self, model: str, resolved_model: str) -> list[str]:

@@ -25,6 +25,11 @@ class LiveCodeBenchAdapter(BenchmarkAdapter):
             "OPENAI_API_KEY": self.cfg.api_key or "none",
         }
 
+    def extra_preflight_failures(self) -> list[str]:
+        import importlib.util
+
+        return [] if importlib.util.find_spec("lcb_runner") else ["Python module not installed: lcb_runner"]
+
     def build_command(self, model: str, resolved_model: str) -> list[str]:
         repo = self.bench_cfg.get("repo", "")
         release = self.bench_cfg.get("release", "release_v2")

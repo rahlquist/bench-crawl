@@ -14,9 +14,9 @@ class SWEBenchProAdapter(BenchmarkAdapter):
 
     def prereqs(self) -> list[tuple[str, str | None]]:
         return [
-            ("SWE-bench_Pro-os clone", None),
+            (f"SWE-bench_Pro-os clone at {self.bench_cfg.get('repo', 'SWE-bench_Pro-os')}", None),
             ("docker", "docker"),
-            ("swe_bench_pro_eval.py (in repo)", "python"),
+            ("swe_bench_pro_eval.py (in repo)", None),
         ]
 
     def build_env(self, model: str, resolved_model: str) -> dict:
@@ -26,9 +26,19 @@ class SWEBenchProAdapter(BenchmarkAdapter):
             "OPENAI_API_BASE": self.cfg.base_url,
         }
 
+    def extra_preflight_failures(self) -> list[str]:
+        repo = Path(self.bench_cfg.get("repo", "SWE-bench_Pro-os"))
+        script = repo / "swe_bench_pro_eval.py"
+        failures = []
+        if not repo.is_dir():
+            failures.append(f"repository not found: {repo}")
+        if not script.exists():
+            failures.append(f"evaluation script not found: {script}")
+        return failures
+
     def build_command(self, model: str, resolved_model: str) -> list[str]:
         repo = self.bench_cfg.get("repo", "SWE-bench_Pro-os")
-        script = f"{repo}/swe_bench_pro_eval.py"
+        script = str(Path(repo) / "swe_bench_pro_eval.py")
         cmd = [
             "python", script,
             "--raw_sample_path", f"{repo}/swe_bench_pro_full.csv",

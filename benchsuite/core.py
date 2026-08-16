@@ -8,6 +8,7 @@ from pathlib import Path
 from .adapters.base import AdapterResult, BenchmarkAdapter
 from .config import Config, model_for_benchmark
 from .endpoint import resolve_model_id
+from .preflight import PreflightReport, preflight, write_preflight
 
 # registry filled by adapters/__init__.py
 ADAPTERS: dict[str, type[BenchmarkAdapter]] = {}
@@ -77,10 +78,20 @@ def run_one(
     return result
 
 
-def run_benchmarks(names: list[str], cfg: Config) -> dict[str, AdapterResult]:
-    resolved = resolve_model_id(cfg.base_url, cfg.api_key, cfg.model)
+def run_benchmarks(names: list[str], cfg: Config, preflight_report: PreflightReport | None = None) -> dict[str, AdapterResult]:
+    resolved = (preflight_report.resolved_model if preflight_report else None) or resolve_model_id(cfg.base_url, cfg.api_key, cfg.model)
     results: dict[str, AdapterResult] = {}
     for name in names:
+        if preflight_report and preflight_report.benchmarks[name].status == "blocked":
+            item = preflight_report.benchmarks[name]
+            results[name] = AdapterResult(
+                benchmark=name,
+                status="blocked",
+                error="; ".join(item.failures),
+                detail={"prerequisites": item.prerequisites},
+            )
+            write_results(cfg, results)
+            continue
         results[name] = run_one(name, cfg, resolved or cfg.model, cfg.timeout_s)
         # persist incrementally so a long multi-benchmark run survives a crash
         write_results(cfg, results)

@@ -15,6 +15,11 @@ def _metric_cell(r: AdapterResult) -> str:
 
 
 def render_markdown(results: dict[str, AdapterResult], model: str, base_url: str) -> str:
+    try:
+        from . import core
+        categories = {name: cls.category for name, cls in core.ADAPTERS.items()}
+    except ImportError:
+        categories = {}
     lines = []
     lines.append("# Model Benchmark Suite Report")
     lines.append("")
@@ -22,13 +27,23 @@ def render_markdown(results: dict[str, AdapterResult], model: str, base_url: str
     lines.append(f"- **Endpoint:** `{base_url}`")
     lines.append(f"- **Generated:** {datetime.datetime.now().isoformat(timespec='seconds')}")
     lines.append("")
+    scored = {name: r for name, r in results.items() if r.metric_name and r.metric_value is not None}
+    lines.append("## Ending Results")
+    lines.append("")
+    lines.append(f"- **Scored benchmarks:** {len(scored)}")
+    lines.append(f"- **Completed benchmarks:** {sum(r.status == 'ok' for r in results.values())}")
+    lines.append(f"- **Blocked or unavailable:** {sum(r.status in {'blocked', 'not_run', 'failed'} for r in results.values())}")
+    lines.append("")
     lines.append("## Results")
     lines.append("")
-    lines.append("| Benchmark | Category | Status | Metric |")
-    lines.append("|---|---|---|---|")
+    lines.append("| Benchmark | Category | Status | Score metric | Score | Notes |")
+    lines.append("|---|---|---|---|---:|---|")
     for name in sorted(results):
         r = results[name]
-        lines.append(f"| {name} | {getattr(r, 'category', '') or ''} | {r.status} | {_metric_cell(r)} |")
+        score = f"{r.metric_value:.4f}" if r.metric_value is not None else "-"
+        notes = r.error or ("score produced" if r.metric_value is not None else "no score produced")
+        category = categories.get(name, getattr(r, "category", "")) or ""
+        lines.append(f"| {name} | {category} | {r.status} | {r.metric_name or '-'} | {score} | {notes} |")
     lines.append("")
     lines.append("## Detail")
     lines.append("")

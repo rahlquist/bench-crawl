@@ -26,6 +26,10 @@ class DeepSWEAdapter(BenchmarkAdapter):
             "ANTHROPIC_API_KEY": "",  # unused; pier reads model prefix
         }
 
+    def extra_preflight_failures(self) -> list[str]:
+        tasks = Path(self.bench_cfg.get("tasks_dir", "deep-swe/tasks"))
+        return [] if tasks.is_dir() else [f"tasks directory not found: {tasks}"]
+
     def build_command(self, model: str, resolved_model: str) -> list[str]:
         tasks_dir = self.bench_cfg.get("tasks_dir", "deep-swe/tasks")
         agent = self.bench_cfg.get("agent", "mini-swe-agent")

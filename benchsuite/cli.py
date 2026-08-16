@@ -65,7 +65,14 @@ def cmd_run(args) -> int:
             if name not in core.ADAPTERS:
                 print(f"unknown benchmark: {name}", file=sys.stderr)
                 return 2
-    results = core.run_benchmarks(names, cfg)
+    from .preflight import preflight, write_preflight
+
+    pf = preflight(names, cfg)
+    preflight_paths = write_preflight(cfg, pf)
+    print(f"preflight: {preflight_paths[1]}")
+    if not pf.ok:
+        print(f"preflight blocked: {len(pf.blocked)} benchmark(s)")
+    results = core.run_benchmarks(names, cfg, pf)
     from .report import write_report
 
     rpath = write_report(cfg, results)
@@ -95,6 +102,23 @@ def cmd_report(args) -> int:
     return 0
 
 
+def cmd_preflight(args) -> int:
+    cfg = load_config(args.config)
+    names = args.benchmarks or cfg.enabled_benchmarks
+    from .preflight import preflight, write_preflight
+
+    report = preflight(names, cfg)
+    paths = write_preflight(cfg, report)
+    print(f"preflight: {paths[1]}")
+    print(f"raw:       {paths[0]}")
+    print(f"ready:     {sum(item.status == 'ready' for item in report.benchmarks.values())}")
+    print(f"blocked:   {len(report.blocked)}")
+    for name, item in report.benchmarks.items():
+        suffix = f" — {'; '.join(item.failures)}" if item.failures else ""
+        print(f"  {name:20s} {item.status}{suffix}")
+    return 0 if report.ok else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="benchsuite",
@@ -103,6 +127,8 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
 
     sub.add_parser("list", help="list available benchmarks")
+    p_preflight = sub.add_parser("preflight", help="validate endpoint and prerequisites without running benchmarks")
+    p_preflight.add_argument("benchmarks", nargs="*", help="benchmark names to validate")
     p_check = sub.add_parser("check", help="verify endpoint + prerequisites")
     p_check.add_argument("--model", default=None, help="model id to look up")
     p_run = sub.add_parser("run", help="run benchmarks (default: all enabled)")
@@ -110,7 +136,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("report", help="regenerate report from last run")
 
     args = parser.parse_args(argv)
-    dispatch = {"list": cmd_list, "check": cmd_check, "run": cmd_run, "report": cmd_report}
+    dispatch = {"list": cmd_list, "check": cmd_check, "preflight": cmd_preflight, "run": cmd_run, "report": cmd_report}
     return dispatch[args.command](args)
 
 

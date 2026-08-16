@@ -31,7 +31,7 @@ evaluate = true
 repo = ""
 
 [benchmarks.deepswe]
-enabled = false
+enabled = true
 tasks_dir = "deep-swe/tasks"
 agent = "mini-swe-agent"
 model = ""
@@ -39,7 +39,7 @@ n_tasks = 0
 sample_seed = 0
 
 [benchmarks.terminalbench]
-enabled = false
+enabled = true
 dataset = "terminal-bench/terminal-bench@latest"
 agent = "terminus"
 model = ""
@@ -47,7 +47,7 @@ n_concurrent = 1
 task = ""
 
 [benchmarks.swebench_pro]
-enabled = false
+enabled = true
 repo = "SWE-bench_Pro-os"
 subset = "public"
 num_instances = 0
@@ -55,7 +55,7 @@ max_workers = 4
 model = ""
 
 [benchmarks.taubench]
-enabled = false
+enabled = true
 repo = "tau-bench"
 env = "banking"
 agent_strategy = "tool-calling"
@@ -64,6 +64,6 @@ model = ""
 max_concurrency = 2
 
 [benchmarks.foodtruck]
-enabled = false
+enabled = true
 contact_email = "contact@foodtruckbench.com"
 submission_dir = "results/foodtruck"

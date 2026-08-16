@@ -25,6 +25,16 @@ class TauBenchAdapter(BenchmarkAdapter):
             "OPENAI_API_KEY": self.cfg.api_key or "none",
         }
 
+    def extra_preflight_failures(self) -> list[str]:
+        repo = Path(self.bench_cfg.get("repo", "tau-bench"))
+        run_script = repo / "run.py"
+        failures = []
+        if not repo.is_dir():
+            failures.append(f"repository not found: {repo}")
+        if not run_script.exists():
+            failures.append(f"run script not found: {run_script}")
+        return failures
+
     def build_command(self, model: str, resolved_model: str) -> list[str]:
         repo = self.bench_cfg.get("repo", "tau-bench")
         env_name = self.bench_cfg.get("env", "banking")
