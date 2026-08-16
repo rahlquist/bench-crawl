@@ -59,6 +59,22 @@ See the documented commands in:
 ./scripts/setup-harnesses.sh
 ```
 
+Or use the Bench Crawl installer. It defaults to a dry-run:
+
+```bash
+benchsuite install --all
+```
+
+Review the commands, then execute them explicitly:
+
+```bash
+benchsuite install --all --execute
+```
+
+The installer installs the local harness packages/tools and clones the public benchmark repositories into the project directory. It skips repositories that already exist and reports each item independently. FoodTruck is reported as `skipped` because its official engine is hosted and closed-source; there is no local package to install.
+
+The installer does not automatically install Docker, start system services, download model weights, or bypass benchmark access restrictions. Run `benchsuite preflight` after installation.
+
 ## Configuration
 
 Copy the public example and edit it:
@@ -319,6 +335,8 @@ less results/report.md
 ```text
 benchsuite list
 benchsuite check
+benchsuite preflight [benchmark ...]
+benchsuite install --all [--execute]
 benchsuite run [benchmark ...]
 benchsuite report
 ```

@@ -121,6 +121,20 @@ def cmd_preflight(args) -> int:
     return 0 if report.ok else 1
 
 
+def cmd_install(args) -> int:
+    from .install import build_install_plan, execute_install_plan, format_plan
+
+    plan = build_install_plan()
+    if not args.execute:
+        print(format_plan(plan))
+        return 0
+    print("Installing benchmark harnesses and repositories...")
+    summary = execute_install_plan(plan, execute=True)
+    for name, status in summary.items():
+        print(f"  {name:20s} {status}")
+    return 0 if all(status in {"installed", "already-present", "skipped"} for status in summary.values()) else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="benchsuite",
@@ -131,6 +145,9 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("list", help="list available benchmarks")
     p_preflight = sub.add_parser("preflight", help="validate endpoint and prerequisites without running benchmarks")
     p_preflight.add_argument("benchmarks", nargs="*", help="benchmark names to validate")
+    p_install = sub.add_parser("install", help="show or execute installation plan for all benchmarks")
+    p_install.add_argument("--all", action="store_true", help="include all benchmark adapters")
+    p_install.add_argument("--execute", action="store_true", help="execute the installation plan; default is dry-run")
     p_check = sub.add_parser("check", help="verify endpoint + prerequisites")
     p_check.add_argument("--model", default=None, help="model id to look up")
     p_run = sub.add_parser("run", help="run benchmarks (default: all enabled)")
@@ -138,7 +155,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("report", help="regenerate report from last run")
 
     args = parser.parse_args(argv)
-    dispatch = {"list": cmd_list, "check": cmd_check, "preflight": cmd_preflight, "run": cmd_run, "report": cmd_report}
+    dispatch = {"list": cmd_list, "check": cmd_check, "preflight": cmd_preflight, "install": cmd_install, "run": cmd_run, "report": cmd_report}
     return dispatch[args.command](args)
 
 
