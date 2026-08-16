@@ -30,7 +30,7 @@ class PreflightReportingTests(unittest.TestCase):
             with patch("benchsuite.preflight.check_endpoint") as endpoint:
                 endpoint.return_value.reachable = True
                 endpoint.return_value.model_ids = ["demo-model"]
-                with patch("shutil.which", return_value=None):
+                with patch("shutil.which", return_value=None), patch("benchsuite.preflight.sys.executable", "/missing/python"):
                     report = core.preflight(["mmlu", "foodtruck"], cfg)
 
             self.assertFalse(report.ok)

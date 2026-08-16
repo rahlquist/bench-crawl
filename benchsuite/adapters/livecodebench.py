@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 
 from .base import AdapterResult, BenchmarkAdapter
@@ -22,8 +23,13 @@ class LiveCodeBenchAdapter(BenchmarkAdapter):
         # it at our endpoint and model id is passed on the CLI.
         return {
             "OPENAI_API_BASE": self.cfg.base_url,
+            "OPENAI_KEY": self.cfg.api_key or "none",
             "OPENAI_API_KEY": self.cfg.api_key or "none",
         }
+
+    @property
+    def run_cwd(self) -> Path:
+        return self.project_root / self.bench_cfg.get("repo", "LiveCodeBench")
 
     def extra_preflight_failures(self) -> list[str]:
         import importlib.util
@@ -31,7 +37,7 @@ class LiveCodeBenchAdapter(BenchmarkAdapter):
         return [] if importlib.util.find_spec("lcb_runner") else ["Python module not installed: lcb_runner"]
 
     def build_command(self, model: str, resolved_model: str) -> list[str]:
-        repo = self.bench_cfg.get("repo", "")
+        repo = self.bench_cfg.get("repo", "LiveCodeBench")
         release = self.bench_cfg.get("release", "release_v2")
         scenario = self.bench_cfg.get("scenario", "codegeneration")
         evaluate = self.bench_cfg.get("evaluate", True)
@@ -40,7 +46,7 @@ class LiveCodeBenchAdapter(BenchmarkAdapter):
             f"lcb_runner.runner.main"  # repo path used as cwd
 
         cmd = [
-            "python", "-m", module,
+            sys.executable, "-m", module,
             "--model", resolved_model,
             "--scenario", scenario,
             "--release_version", release,
@@ -50,6 +56,9 @@ class LiveCodeBenchAdapter(BenchmarkAdapter):
             cmd.append("--evaluate")
         # lcb_runner pulls the dataset from HF; set version-specific env
         return cmd
+
+    def make_outdir(self, run_id: str) -> Path:
+        return super().make_outdir(run_id)
 
     def parse(self, out_dir: Path, log: str) -> AdapterResult:
         # lcb_runner writes results to the output_file path.

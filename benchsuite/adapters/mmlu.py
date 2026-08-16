@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from .base import AdapterResult, BenchmarkAdapter
@@ -21,13 +22,13 @@ class MMLUAdapter(BenchmarkAdapter):
         if subset:
             tasks = subset
         cmd = [
-            "lm_eval",
+            sys.executable, "-m", "lm_eval",
             # MMLU's MCQ metric uses log-likelihood; chat completions do not
             # implement that API. llama.cpp exposes the required completions
             # endpoint, so use lm-eval's local-completions model here.
             "--model", "local-completions",
             "--model_args",
-            f"base_url={self.cfg.base_url},model={resolved_model},tokenizer={self.bench_cfg.get('tokenizer', '')},tokenizer_backend=huggingface,tokenized_requests=false,dtype={self.bench_cfg.get('dtype', 'bfloat16')}",
+            f"base_url={self.cfg.base_url}/completions,model={resolved_model},tokenizer={self.bench_cfg.get('tokenizer', '')},tokenizer_backend=huggingface,tokenized_requests=false,dtype={self.bench_cfg.get('dtype', 'bfloat16')}",
             "--tasks", tasks,
             "--num_fewshot", str(self.bench_cfg.get("num_fewshot", 5)),
             "--batch_size", str(self.bench_cfg.get("batch_size", 8)),

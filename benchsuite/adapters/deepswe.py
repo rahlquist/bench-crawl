@@ -31,7 +31,7 @@ class DeepSWEAdapter(BenchmarkAdapter):
         return [] if tasks.is_dir() else [f"tasks directory not found: {tasks}"]
 
     def build_command(self, model: str, resolved_model: str) -> list[str]:
-        tasks_dir = self.bench_cfg.get("tasks_dir", "deep-swe/tasks")
+        tasks_dir = str(self.project_root / self.bench_cfg.get("tasks_dir", "deep-swe/tasks"))
         agent = self.bench_cfg.get("agent", "mini-swe-agent")
         pier_model = f"openai/{resolved_model}"  # pier routes via litellm openai/
         cmd = [
@@ -39,7 +39,7 @@ class DeepSWEAdapter(BenchmarkAdapter):
             "-p", tasks_dir,
             "--agent", agent,
             "--model", pier_model,
-            "--output-dir", str(self.results_dir / "deepswe"),
+            "--jobs-dir", str(self.results_dir / "deepswe"),
         ]
         n_tasks = self.bench_cfg.get("n_tasks", 0)
         if n_tasks:

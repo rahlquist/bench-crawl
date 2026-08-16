@@ -48,6 +48,7 @@ class BenchmarkAdapter(abc.ABC):
         self.cfg = cfg
         self.bench_cfg = bench_cfg
         self.results_dir = results_dir
+        self.project_root = Path(__file__).resolve().parents[2]
 
     # -- prerequisites -----------------------------------------------------
     def prereqs(self) -> list[tuple[str, str | None]]:

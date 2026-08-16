@@ -21,6 +21,7 @@ class InstallPlanTests(unittest.TestCase):
         output = format_plan(build_install_plan())
         self.assertIn("DRY RUN", output)
         self.assertIn("lm-eval", output)
+        self.assertIn("LiveCodeBench.git", output)
         self.assertIn("datacurve-pier", output)
         self.assertIn("harbor", output)
         self.assertIn("hosted-only", output)

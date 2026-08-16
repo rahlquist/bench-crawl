@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from .base import AdapterResult, BenchmarkAdapter
@@ -37,13 +38,15 @@ class SWEBenchProAdapter(BenchmarkAdapter):
         return failures
 
     def build_command(self, model: str, resolved_model: str) -> list[str]:
-        repo = self.bench_cfg.get("repo", "SWE-bench_Pro-os")
+        repo = str(self.project_root / self.bench_cfg.get("repo", "SWE-bench_Pro-os"))
         script = str(Path(repo) / "swe_bench_pro_eval.py")
         cmd = [
-            "python", script,
+            sys.executable, script,
             "--raw_sample_path", f"{repo}/swe_bench_pro_full.csv",
             "--patch_path", str(self.results_dir / f"swebench_pro_{resolved_model}.json"),
             "--output_dir", str(self.results_dir / "swebench_pro"),
+            "--dockerhub_username", self.bench_cfg.get("dockerhub_username", "jefzda"),
+            "--scripts_dir", str(Path(repo) / "run_scripts"),
             "--num_workers", str(self.bench_cfg.get("max_workers", 4)),
         ]
         return cmd

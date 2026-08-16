@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
@@ -44,8 +45,11 @@ def _benchmark_preflight(name: str, cfg: Config) -> PreflightBenchmark:
     adapter = core.ADAPTERS[name](cfg, cfg.benchmarks.get(name, {}), cfg.results_dir)
     prerequisites: list[str] = []
     failures: list[str] = []
+    venv_bin = Path(sys.executable).parent
     for label, binary in adapter.prereqs():
-        if binary and shutil.which(binary) is None:
+        executable = (venv_bin / binary) if binary else None
+        binary_found = bool(executable and executable.exists()) or bool(binary and shutil.which(binary))
+        if binary and not binary_found:
             failures.append(f"missing executable: {binary}")
             prerequisites.append(f"{label} [MISSING]")
         else:

@@ -52,7 +52,8 @@ def run_one(
     try:
         from .adapters.base import run_cmd
 
-        proc = run_cmd(cmd, env, cwd=out_dir, timeout_s=timeout_s, log_path=log_path)
+        run_cwd = getattr(adapter, "run_cwd", None) or out_dir
+        proc = run_cmd(cmd, env, cwd=run_cwd, timeout_s=timeout_s, log_path=log_path)
     except subprocess.TimeoutExpired:
         return AdapterResult(benchmark=name, status="failed", output_dir=str(out_dir),
                              error="timeout")

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from .base import AdapterResult, BenchmarkAdapter
@@ -36,10 +37,10 @@ class TauBenchAdapter(BenchmarkAdapter):
         return failures
 
     def build_command(self, model: str, resolved_model: str) -> list[str]:
-        repo = self.bench_cfg.get("repo", "tau-bench")
+        repo = str(self.project_root / self.bench_cfg.get("repo", "tau-bench"))
         env_name = self.bench_cfg.get("env", "banking")
         cmd = [
-            "python", f"{repo}/run.py",
+            sys.executable, f"{repo}/run.py",
             "--agent-strategy", self.bench_cfg.get("agent_strategy", "tool-calling"),
             "--env", env_name,
             "--model", resolved_model,

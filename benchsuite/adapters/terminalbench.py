@@ -31,7 +31,7 @@ class TerminalBenchAdapter(BenchmarkAdapter):
             "--agent", agent,
             "--model", harbor_model,
             "--n-concurrent", str(self.bench_cfg.get("n_concurrent", 1)),
-            "--output-dir", str(self.results_dir / "terminalbench"),
+            "--jobs-dir", str(self.results_dir / "terminalbench"),
         ]
         task = self.bench_cfg.get("task", "")
         if task:

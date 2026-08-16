@@ -26,9 +26,12 @@ def build_install_plan() -> list[InstallItem]:
             "Installs lm-evaluation-harness with API support.",
         ),
         InstallItem(
-            "livecodebench", "package",
-            (("uv", "pip", "install", "livecodebench"),),
-            "Installs the official lcb_runner package.",
+            "livecodebench", "repository",
+            (
+                ("git", "clone", "https://github.com/LiveCodeBench/LiveCodeBench.git", "LiveCodeBench"),
+                ("uv", "pip", "install", "-e", "LiveCodeBench"),
+            ),
+            "The official project is installed from its repository; there is no PyPI package named livecodebench.",
         ),
         InstallItem(
             "deepswe", "tool+repository",
