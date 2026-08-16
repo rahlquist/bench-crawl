@@ -44,7 +44,7 @@ Bench Crawl connects the official runners to one endpoint and produces a consist
 ## Installation
 
 ```bash
-git clone https://github.com/<owner>/bench-crawl.git
+git clone https://github.com/rahlquist/bench-crawl.git
 cd bench-crawl
 ./scripts/setup.sh
 source .venv/bin/activate
@@ -292,7 +292,7 @@ If you use Bench Crawl in research or published comparisons, record the reposito
 
 ```text
 Bench Crawl: a unified orchestrator for heterogeneous language-model benchmarks.
-https://github.com/<owner>/bench-crawl
+https://github.com/rahlquist/bench-crawl
 ```
 
 ## Contact
