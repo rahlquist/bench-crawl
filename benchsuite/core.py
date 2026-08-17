@@ -82,19 +82,13 @@ def run_one(
 def run_benchmarks(names: list[str], cfg: Config, preflight_report: PreflightReport | None = None) -> dict[str, AdapterResult]:
     resolved = (preflight_report.resolved_model if preflight_report else None) or resolve_model_id(cfg.base_url, cfg.api_key, cfg.model)
     results: dict[str, AdapterResult] = {}
+    # Deliberately retain the public dict API while enforcing one visible serial loop.
     for name in names:
         if preflight_report and preflight_report.benchmarks[name].status == "blocked":
             item = preflight_report.benchmarks[name]
-            results[name] = AdapterResult(
-                benchmark=name,
-                status="blocked",
-                error="; ".join(item.failures),
-                detail={"prerequisites": item.prerequisites},
-            )
-            write_results(cfg, results)
-            continue
-        results[name] = run_one(name, cfg, resolved or cfg.model, cfg.timeout_s)
-        # persist incrementally so a long multi-benchmark run survives a crash
+            results[name] = AdapterResult(benchmark=name, status="blocked", error="; ".join(item.failures), detail={"prerequisites": item.prerequisites})
+        else:
+            results[name] = run_one(name, cfg, resolved or cfg.model, cfg.timeout_s)
         write_results(cfg, results)
     return results
 
