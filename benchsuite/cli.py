@@ -65,24 +65,74 @@ def cmd_run(args) -> int:
             if name not in core.ADAPTERS:
                 print(f"unknown benchmark: {name}", file=sys.stderr)
                 return 2
+
+    # Cooperative cancellation handle, flipped by a SIGINT handler so Ctrl-C
+    # requests a cancel between benchmarks. Mirrors SerialWorkflow.cancel:
+    # in-flight benchmarks are NOT mid-run interrupted (synchronous design).
+    class _CancelHandle:
+        def __init__(self):
+            self._set = False
+        def is_set(self):
+            return self._set
+        def set(self):
+            if not self._set:
+                self._set = True
+                print("\nCtrl-C received: requesting cancel after the current "
+                      "benchmark finishes (in-flight benchmarks are not "
+                      "interrupted).", file=sys.stderr)
+    cancel = _CancelHandle()
+    def _sigint(_signum, _frame):
+        cancel.set()
+    import signal as _signal
+    _old_handler = _signal.signal(_signal.SIGINT, _sigint) if hasattr(_signal, "SIGINT") else None
+
     from .preflight import preflight, write_preflight
+    from .execution_contract import Dependency
 
     pf = preflight(names, cfg)
     preflight_paths = write_preflight(cfg, pf)
     print(f"preflight: {preflight_paths[1]}")
     if not pf.ok:
         print(f"preflight blocked: {len(pf.blocked)} benchmark(s)")
-    results = core.run_benchmarks(names, cfg, pf)
+
+    # Build the dependency list from the config (benchmarks may declare
+    # `after = [...]` prerequisites). These feed DependencyScheduler so a
+    # failed/skipped/cancelled prerequisite runtime-blocks its dependents.
+    deps = []
+    for name in names:
+        after = cfg.benchmarks.get(name, {}).get("after")
+        if after:
+            prereqs = tuple(after) if isinstance(after, (list, tuple)) else (after,)
+            deps.append(Dependency(benchmark=name, prerequisites=tuple(prereqs)))
+
+    store_path = cfg.results_dir / "run.json"
+    results = core.run_benchmarks(
+        names, cfg, pf,
+        deps=deps,
+        store_path=store_path,
+        cancel_handle=cancel,
+    )
+
+    if _old_handler is not None:
+        try:
+            _signal.signal(_signal.SIGINT, _old_handler)
+        except Exception:
+            pass
+
     from .report import write_all_reports
 
     rpath, csv_path = write_all_reports(cfg, results)
     print(f"report: {rpath}")
     print(f"raw:    {cfg.results_dir / 'latest.json'}")
     print(f"csv:    {csv_path}")
+    print(f"run snapshot (resume): {store_path}")
     for name in sorted(results):
         r = results[name]
         metric = f" {r.metric_name}={r.metric_value:.4f}" if r.metric_value is not None else ""
         print(f"  {name:20s} {r.status}{metric}")
+    if cancel.is_set():
+        print("run cancelled; remaining benchmarks were skipped.", file=sys.stderr)
+        return 130
     return 0
 
 

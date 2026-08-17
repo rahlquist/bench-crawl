@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 from .adapters.base import AdapterResult, BenchmarkAdapter
@@ -28,6 +30,8 @@ def run_one(
     cfg: Config,
     resolved_model: str,
     timeout_s: int,
+    stream_to: "object | None" = None,
+    cancel_callback: "object | None" = None,
 ) -> AdapterResult:
     if name not in ADAPTERS:
         return AdapterResult(benchmark=name, status="not_run",
@@ -62,7 +66,12 @@ def run_one(
         from .adapters.base import run_cmd
 
         run_cwd = getattr(adapter, "run_cwd", None) or out_dir
-        proc = run_cmd(cmd, env, cwd=run_cwd, timeout_s=effective_timeout, log_path=log_path)
+        # Stream the harness's stdout/stderr to the console live (B0 "visible
+        # serial execution"); the CLI passes sys.stderr so an operator sees each
+        # benchmark's output as it runs, not only the post-run harness.log.
+        proc = run_cmd(cmd, env, cwd=run_cwd, timeout_s=effective_timeout,
+                       log_path=log_path, stream_to=stream_to,
+                       cancel_callback=cancel_callback)
     except subprocess.TimeoutExpired:
         return AdapterResult(benchmark=name, status="failed", output_dir=str(out_dir),
                              error="timeout")
@@ -88,17 +97,102 @@ def run_one(
     return result
 
 
-def run_benchmarks(names: list[str], cfg: Config, preflight_report: PreflightReport | None = None) -> dict[str, AdapterResult]:
+def run_benchmarks(names: list[str], cfg: Config, preflight_report: PreflightReport | None = None,
+                   deps: list | None = None,
+                   store_path: Path | None = None,
+                   on_event=None,
+                   cancel_handle: object | None = None) -> dict[str, AdapterResult]:
+    """Run benchmarks serially through the B0 recoverable execution workflow.
+
+    The public signature is preserved: callers (the CLI, report regeneration,
+    etc.) still receive ``dict[str, AdapterResult]`` keyed by benchmark name.
+    Internally the run is now driven by ``SerialWorkflow`` so that the six B0
+    acceptance pillars actually execute on the live path: incremental
+    persistence (SnapshotStore), visible serial output (streamed to the
+    console), cooperative cancellation, runtime dependency gating, elapsed
+    timing, and progress.
+
+    ``deps`` / ``store_path`` / ``on_event`` / ``cancel_handle`` are optional
+    wiring hooks used by the CLI. ``deps`` defaults to no dependencies.
+    ``store_path`` defaults to ``<results_dir>/run.json``. ``cancel_handle`` is
+    an object whose ``is_set()`` returns True to request a cooperative cancel
+    between benchmarks; if omitted the run is never cancelled.
+    """
+    import sys
+
+    from .execution import SerialWorkflow, make_run
+    from .execution_contract import BenchmarkState, SnapshotStore
+
     resolved = (preflight_report.resolved_model if preflight_report else None) or resolve_model_id(cfg.base_url, cfg.api_key, cfg.model)
-    results: dict[str, AdapterResult] = {}
-    # Deliberately retain the public dict API while enforcing one visible serial loop.
-    for name in names:
-        if preflight_report and preflight_report.benchmarks[name].status == "blocked":
+    run_id = f"run-{int(time.time())}"
+
+    # Static preflight blocking (a prerequisite that never resolved) is folded
+    # into the snapshot so a crash mid-run leaves a correct resume snapshot and
+    # the scheduler runtime-blocks any dependent immediately.
+    deps = list(deps or [])
+    preflight_blocked = {name for name in names
+                         if preflight_report and preflight_report.benchmarks[name].status == "blocked"}
+
+    run = make_run(run_id, names, dependencies=deps)
+    store = SnapshotStore(store_path or (cfg.results_dir / "run.json"))
+
+    for name in preflight_blocked:
+        b = next(x for x in run.benchmarks if x.name == name)
+        b.state = BenchmarkState.BLOCKED
+        b.error = "; ".join(preflight_report.benchmarks[name].failures)
+
+    def execute(name: str) -> AdapterResult:
+        # Preflight-blocked benchmarks never execute; the seeded BLOCKED state
+        # lets the scheduler runtime-block dependents too.
+        if name in preflight_blocked:
             item = preflight_report.benchmarks[name]
-            results[name] = AdapterResult(benchmark=name, status="blocked", error="; ".join(item.failures), detail={"prerequisites": item.prerequisites})
-        else:
-            results[name] = run_one(name, cfg, resolved or cfg.model, cfg.timeout_s)
-        write_results(cfg, results)
+            return AdapterResult(benchmark=name, status="blocked",
+                                 error="; ".join(item.failures),
+                                 detail={"prerequisites": item.prerequisites})
+        # Stream live and honor cooperative cancel between output lines.
+        cancel_cb = (lambda: bool(getattr(cancel_handle, "is_set", lambda: False)())) if cancel_handle is not None else None
+        return run_one(name, cfg, resolved or cfg.model, cfg.timeout_s,
+                       stream_to=sys.stderr, cancel_callback=cancel_cb)
+
+    def event(evt):
+        if on_event:
+            on_event(evt)
+        kind = evt.get("kind")
+        name = evt.get("benchmark")
+        if kind == "started":
+            print(f"  >> [{name}] running...", file=sys.stderr)
+        elif kind == "finished":
+            st = evt.get("state")
+            el = evt.get("elapsed_s")
+            el_s = f" ({el:.1f}s)" if isinstance(el, (int, float)) else ""
+            print(f"  << [{name}] {st}{el_s}", file=sys.stderr)
+
+    wf = SerialWorkflow(run, dependencies=deps, store=store, execute=execute,
+                        on_event=event, cancel_handle=cancel_handle)
+    final = wf.run_all()
+
+    # Translate the contract states back into the public AdapterResult vocabulary
+    # so downstream consumers (report regen, etc.) see the same statuses as
+    # before the wiring.
+    state_from = {
+        "succeeded": "ok", "failed": "failed", "blocked": "blocked",
+        "timed_out": "failed", "cancelled": "not_run", "skipped": "skipped",
+    }
+    results: dict[str, AdapterResult] = {}
+    for b in final.benchmarks:
+        if b.name in preflight_blocked:
+            item = preflight_report.benchmarks[b.name]
+            results[b.name] = AdapterResult(benchmark=b.name, status="blocked",
+                                            error="; ".join(item.failures),
+                                            detail={"prerequisites": item.prerequisites})
+            continue
+        results[b.name] = AdapterResult(
+            benchmark=b.name,
+            status=state_from.get(b.state.value, "failed"),
+            error=b.error,
+            detail={"elapsed_s": b.elapsed_s} if b.elapsed_s else {},
+        )
+    write_results(cfg, results)
     return results
 
 

@@ -23,8 +23,10 @@ BENCHMARK_STATE_FROM_ADAPTER_STATUS={
 
 class SerialWorkflow:
     def __init__(self, run: RunSnapshot, dependencies=(), store: SnapshotStore|None=None,
-                 execute: Callable[[str], object]|None=None, on_event: Callable[[dict],None]|None=None):
+                 execute: Callable[[str], object]|None=None, on_event: Callable[[dict],None]|None=None,
+                 cancel_handle: object|None=None):
         self.run, self.store, self.execute, self.on_event = run, store, execute, on_event
+        self.cancel_handle = cancel_handle
         self.scheduler=DependencyScheduler(run, dependencies, store)
     def _save(self):
         if self.store: self.store.save(self.run)
@@ -37,6 +39,20 @@ class SerialWorkflow:
     def run_all(self):
         self.run.state=RunState.RUNNING; self._save()
         while True:
+            # Cooperative cancel: a SIGINT handler in the CLI flips the handle
+            # (or calls cancel()) between benchmarks; we honor it here without
+            # interrupting an in-flight benchmark subprocess.
+            if self.run.cancel_requested or (self.cancel_handle is not None and getattr(self.cancel_handle,'is_set',lambda:False)()):
+                if not self.run.cancel_requested: self.cancel()
+                # Mark every not-yet-started benchmark as cancelled. The cancel
+                # is cooperative: an in-flight benchmark is left to finish.
+                for b in self.run.benchmarks:
+                    if b.state is BenchmarkState.QUEUED:
+                        b.transition(BenchmarkState.CANCELLED); self._save()
+                # Once nothing is left to run, finish.
+                if all(b.state is not BenchmarkState.QUEUED for b in self.run.benchmarks):
+                    break
+                continue
             b=self.scheduler.next()
             if b is None: break
             if self.run.cancel_requested:
@@ -61,7 +77,7 @@ class SerialWorkflow:
                 b.error=getattr(result,'error',None) or getattr(result,'failure_reason',None)
             except Exception as exc:
                 state=BenchmarkState.FAILED; b.error=str(exc)
-            b.ended_at=__import__('time').time(); b.elapsed_s=b.ended_at-b.started_at; b.transition(state); self.run.active=None; self._save(); self._event('finished',b.name,state=state.value)
+            b.ended_at=__import__('time').time(); b.elapsed_s=b.ended_at-b.started_at; b.transition(state); self.run.active=None; self._save(); self._event('finished',b.name,state=state.value, elapsed_s=b.elapsed_s)
         self.run.active=None; self.run.ended_at=__import__('time').time(); self.run.state=RunState.CANCELLED if self.run.cancel_requested else (RunState.FAILED if any(b.state in {BenchmarkState.FAILED,BenchmarkState.TIMED_OUT} for b in self.run.benchmarks) else RunState.COMPLETED); self._save(); return self.run
 
 def make_run(run_id, names, dependencies=()):

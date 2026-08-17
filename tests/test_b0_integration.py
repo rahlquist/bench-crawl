@@ -99,28 +99,203 @@ def test_live_run_cmd_kills_grandchildren():
 
 
 # --------------------------------------------------------------------------- #
-# DOCUMENTED GAP: B0 state machine not wired into live run path (D1)
+# B0 state machine IS wired into the live run path (regression for D1)
 # --------------------------------------------------------------------------- #
-def test_b0_workflow_is_not_used_by_live_run_path():
-    """Reproduction / documentation of the integration gap.
+def test_b0_workflow_is_used_by_live_run_path():
+    """The live run path now drives SerialWorkflow/SnapshotStore/DependencyScheduler.
 
-    The SerialWorkflow/SnapshotStore/DependencyScheduler/request_cancel/recover
-    machinery lives in execution.py/execution_contract.py but is never invoked
-    by cli.cmd_run -> core.run_benchmarks -> run_one. Until this is wired, the
-    recovery/cancellation/dependency features are dead code and the operator has
-    no persisted run snapshot to reload after a crash.
+    This is the inverse of the old pinning test, which asserted the B0 state
+    machine was dead code. Closing D1 means cli.cmd_run -> core.run_benchmarks
+    actually constructs a RunSnapshot, a SnapshotStore, and a Dependency list and
+    drives SerialWorkflow.run_all (not a plain subprocess loop).
     """
-    import importlib
     import benchsuite.cli as cli
     import benchsuite.core as runcore
 
     src_cli = inspect.getsource(cli)
     src_core = inspect.getsource(runcore)
 
-    assert "SerialWorkflow" not in src_cli, "cli should not reference SerialWorkflow (gap closed?)"
-    assert "SerialWorkflow" not in src_core, "core should not reference SerialWorkflow (gap closed?)"
-    assert "SnapshotStore" not in src_cli
-    assert "recover" not in src_core, "core.run_benchmarks should not call recover() (gap closed?)"
+    # The CLI must build the dependency list and pass it (plus the snapshot
+    # store path and a cooperative cancel handle) to the workflow driver.
+    assert "Dependency" in src_cli, "cli.cmd_run must build a Dependency list"
+    assert "cancel_handle" in src_cli, "cli.cmd_run must pass a cancel_handle"
+    assert "store_path" in src_cli, "cli.cmd_run must pass a snapshot store_path"
+    # run_benchmarks must drive the workflow rather than a plain subprocess loop.
+    assert "SerialWorkflow" in src_core, "core.run_benchmarks must drive SerialWorkflow"
+    assert "SnapshotStore" in src_core, \
+        "core.run_benchmarks must build a SnapshotStore to persist the run"
+
+
+# --------------------------------------------------------------------------- #
+# Live run path drives SerialWorkflow end-to-end (functional, no real harness)
+# --------------------------------------------------------------------------- #
+def test_live_run_benchmarks_drives_workflow_and_persists(tmp_path, monkeypatch):
+    """core.run_benchmarks delegates to SerialWorkflow and writes a snapshot."""
+    import time as _time
+
+    from benchsuite.execution_contract import SnapshotStore
+
+    cfg = _minimal_cfg(timeout_s=600)
+    cfg.results_dir = tmp_path  # so run.json lands under tmp
+    store_path = tmp_path / "run.json"
+
+    class FakeAdapter:
+        name = "fake"
+        category = "cat"
+        description = "fake"
+
+        def __init__(self, c, bc, rd):
+            pass
+
+        def build_command(self, model, resolved):
+            return [sys.executable, "-c", "import time; time.sleep(0.05)"]
+
+        def build_env(self, model, resolved):
+            return {}
+
+        def run_id(self, model):
+            return f"fake-run-{int(_time.time()*1000)}"
+
+        def make_outdir(self, run_id):
+            d = cfg.results_dir / "fake" / run_id
+            d.mkdir(parents=True, exist_ok=True)
+            return d
+
+        def parse(self, out_dir, log):
+            from benchsuite.adapters.base import AdapterResult
+            return AdapterResult(benchmark="fake", status="ok",
+                                 metric_name="score", metric_value=0.5)
+
+    monkeypatch.setitem(core.ADAPTERS, "fake", FakeAdapter)
+
+    results = core.run_benchmarks(["fake"], cfg, None, store_path=store_path)
+    assert results["fake"].status == "ok"
+    assert store_path.exists(), "SnapshotStore must persist a run snapshot"
+    store = SnapshotStore(store_path)
+    snap = store.load()
+    assert snap.benchmarks[0].state.value == "succeeded"
+    assert snap.benchmarks[0].elapsed_s > 0
+
+
+def test_live_run_blocked_prereq_runtime_blocks_dependent(tmp_path, monkeypatch):
+    """A failed prerequisite runtime-blocks its dependent on the live path."""
+    import time as _time
+
+    cfg = _minimal_cfg(timeout_s=600)
+    cfg.results_dir = tmp_path
+
+    class FakeAdapter:
+        name = "fake"
+        category = "cat"
+        description = "fake"
+
+        def __init__(self, c, bc, rd):
+            pass
+
+        def build_command(self, model, resolved):
+            return [sys.executable, "-c", "import time; time.sleep(0.05)"]
+
+        def build_env(self, model, resolved):
+            return {}
+
+        def run_id(self, model):
+            return f"fake-run-{int(_time.time()*1000)}"
+
+        def make_outdir(self, run_id):
+            d = cfg.results_dir / "fake" / run_id
+            d.mkdir(parents=True, exist_ok=True)
+            return d
+
+        def parse(self, out_dir, log):
+            from benchsuite.adapters.base import AdapterResult
+            return AdapterResult(benchmark="fake", status="ok", metric_value=1.0)
+
+    # Two benchmarks; 'b' depends on 'a'. Make 'a' fail so 'b' gets BLOCKED.
+    monkeypatch.setitem(core.ADAPTERS, "a", FakeAdapter)
+    monkeypatch.setitem(core.ADAPTERS, "b", FakeAdapter)
+    original_a = core.ADAPTERS["a"].parse
+    def fail_a(self, out_dir, log):
+        from benchsuite.adapters.base import AdapterResult
+        return AdapterResult(benchmark="a", status="failed", error="boom")
+    core.ADAPTERS["a"].parse = fail_a
+
+    from benchsuite.execution_contract import Dependency
+    deps = [Dependency(benchmark="b", prerequisites=("a",))]
+    results = core.run_benchmarks(["a", "b"], cfg, None, deps=deps,
+                                  store_path=tmp_path / "run.json")
+    assert results["a"].status == "failed"
+    assert results["b"].status == "blocked", \
+        "dependent must be runtime-blocked when prerequisite fails"
+
+
+def test_live_run_cooperative_cancel_skips_remaining(tmp_path, monkeypatch):
+    """Ctrl-C mid-run requests cancel between benchmarks (no mid-run kill).
+
+    Mimics the real SIGINT scenario: a cancel is requested while the first
+    benchmark is in flight. The in-flight benchmark finishes (synchronous
+    design -- it is never interrupted mid-run), and the remaining queued
+    benchmarks are skipped.
+    """
+    import time as _time
+
+    cfg = _minimal_cfg(timeout_s=600)
+    cfg.results_dir = tmp_path
+
+    class FastAdapter:
+        name = ""
+        category = "cat"
+        description = "x"
+        def __init__(self, c, bc, rd):
+            pass
+        def build_command(self, model, resolved):
+            return [sys.executable, "-c", "import time; time.sleep(0.05)"]
+        def build_env(self, model, resolved):
+            return {}
+        def run_id(self, model):
+            return f"x-{int(_time.time()*1000)}"
+        def make_outdir(self, run_id):
+            d = cfg.results_dir / self.name / run_id
+            d.mkdir(parents=True, exist_ok=True)
+            return d
+        def parse(self, out_dir, log):
+            from benchsuite.adapters.base import AdapterResult
+            return AdapterResult(benchmark=self.name, status="ok")
+
+    for n in ("a", "b", "c"):
+        cls = type(f"Adp{n}", (FastAdapter,), {"name": n})
+        monkeypatch.setitem(core.ADAPTERS, n, cls)
+
+    cancel = _CancelHandle()
+
+    # Wrap run_one so that after the FIRST benchmark completes, a cancel is
+    # requested -- exactly like the SIGINT handler flipping the handle while a
+    # benchmark is in flight. The first benchmark must still complete OK.
+    real_run_one = core.run_one
+    calls = {"n": 0}
+    def wrapped_run_one(name, c, rm, to, stream_to=None, cancel_callback=None):
+        res = real_run_one(name, c, rm, to, stream_to=stream_to, cancel_callback=cancel_callback)
+        calls["n"] += 1
+        if calls["n"] == 1:
+            cancel.set()
+        return res
+    monkeypatch.setattr(core, "run_one", wrapped_run_one)
+
+    results = core.run_benchmarks(["a", "b", "c"], cfg, None,
+                                  cancel_handle=cancel,
+                                  store_path=tmp_path / "run.json")
+    # 'a' ran to completion (no mid-run interruption); 'b'/'c' were skipped.
+    assert results["a"].status == "ok"
+    assert results["b"].status == "not_run"
+    assert results["c"].status == "not_run"
+
+
+class _CancelHandle:
+    def __init__(self):
+        self._set = False
+    def is_set(self):
+        return self._set
+    def set(self):
+        self._set = True
 
 
 def _minimal_cfg(timeout_s: int):
