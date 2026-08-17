@@ -99,27 +99,47 @@ class BenchmarkAdapter(abc.ABC):
 
 def run_cmd(cmd: list[str], env: dict, cwd: Path | None = None,
             timeout_s: int = 7200, log_path: Path | None = None) -> subprocess.CompletedProcess:
-    """Run a harness command, capturing stdout+stderr to a log file."""
+    """Run a harness command, capturing stdout+stderr to a log file.
+
+    The child is launched in its own process group (start_new_session) so that a
+    timeout kills the entire group -- including any grandchildren the harness
+    spawns -- instead of leaving orphaned processes behind.
+    """
     import os
+    import signal
 
     full_env = dict(os.environ)
     full_env.update(env)
-    log_path.parent.mkdir(parents=True, exist_ok=True) if log_path else None
-    try:
-        proc = subprocess.run(
-            cmd,
-            env=full_env,
-            cwd=str(cwd) if cwd else None,
-            capture_output=True,
-            text=True,
-            timeout=timeout_s,
-        )
-    except subprocess.TimeoutExpired as exc:
-        if log_path:
-            tail = (exc.stdout or b"") + b"\n[TIMEOUT]" if isinstance(exc.stdout, bytes) else \
-                (exc.stdout or "") + "\n[TIMEOUT]"
-            log_path.write_text(tail)
-        raise
     if log_path:
-        log_path.write_text((proc.stdout or "") + "\n--- STDERR ---\n" + (proc.stderr or ""))
-    return proc
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+    proc = subprocess.Popen(
+        cmd,
+        env=full_env,
+        cwd=str(cwd) if cwd else None,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    timed_out = False
+    try:
+        out, err = proc.communicate(timeout=timeout_s)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        # Kill the whole process group so grandchildren are reaped too.
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (ProcessLookupError, Exception):
+            # Already gone, or pgid unavailable; best-effort cleanup.
+            proc.kill()
+        try:
+            out, err = proc.communicate(timeout=5)
+        except Exception:
+            out, err = "", ""
+    if timed_out:
+        if log_path:
+            log_path.write_text((out or "") + "\n[TIMEOUT]")
+        raise subprocess.TimeoutExpired(cmd, timeout_s, output=out, stderr=err)
+    if log_path:
+        log_path.write_text((out or "") + "\n--- STDERR ---\n" + (err or ""))
+    return subprocess.CompletedProcess(cmd, proc.returncode, out, err)

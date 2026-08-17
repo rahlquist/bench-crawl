@@ -48,12 +48,21 @@ def run_one(
     env.update(cfg.env)
     env.update(adapter.build_env(model, resolved_model))
 
+    # Enforce the B0 40-minute timeout boundary: a single benchmark subprocess
+    # must never run longer than MAX_BENCHMARK_TIMEOUT_S regardless of cfg.
+    from .execution_contract import clamp_timeout
+    effective_timeout, _clamped = clamp_timeout(timeout_s)
+    if _clamped:
+        # Surface the clamp so an operator watching the run sees the override.
+        print(f"  {name}: requested timeout {timeout_s}s capped to {effective_timeout}s (B0 40-min boundary)",
+              file=sys.stderr)
+
     log_path = out_dir / "harness.log"
     try:
         from .adapters.base import run_cmd
 
         run_cwd = getattr(adapter, "run_cwd", None) or out_dir
-        proc = run_cmd(cmd, env, cwd=run_cwd, timeout_s=timeout_s, log_path=log_path)
+        proc = run_cmd(cmd, env, cwd=run_cwd, timeout_s=effective_timeout, log_path=log_path)
     except subprocess.TimeoutExpired:
         return AdapterResult(benchmark=name, status="failed", output_dir=str(out_dir),
                              error="timeout")
