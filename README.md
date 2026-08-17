@@ -20,6 +20,22 @@ It does **not** replace the official benchmark implementations. It provides one 
 
 The metrics remain separate. Bench Crawl intentionally does not invent a universal aggregate score for benchmarks that measure different capabilities.
 
+## Release acceptance criteria and baselines
+
+These are per-adapter release-gate criteria. They are deliberately not combined into one score. A run is not a model-quality pass when the harness, dataset, endpoint, or execution environment fails; infrastructure failures are recorded as `failed` and block the release until rerun successfully.
+
+| Adapter | Expected result for a release-gate run | Pass/fail criterion | Baseline |
+|---|---|---|---|
+| `mmlu` | Numeric accuracy from the pinned lm-evaluation-harness task/config | **Pass** only when the official harness completes and emits a finite accuracy; **fail** on missing/invalid score or infrastructure error | None established. The first successful run of the release candidate becomes the recorded baseline, including model ID, endpoint, harness version, task/subset, and config. |
+| `livecodebench` | Numeric `pass@1` (and `pass@5` when requested) for a pinned dataset release | **Pass** only when the official evaluator completes and emits the requested finite metric(s); **fail** on missing/invalid score or infrastructure error | None established. Record the first successful release-candidate run with model ID, endpoint, `release_version`, and runner version. |
+| `deepswe` | Official verifier score/result from the pinned DeepSWE/Pier task set | **Pass** only when all selected tasks complete and the verifier emits a score/result; **fail** on task, sandbox, verifier, or infrastructure failure | None established. Record the first successful release-candidate run with model ID, endpoint, task-set revision, image, and harness version. |
+| `terminalbench` | Official Harbor/Terminal-Bench score for the pinned task set | **Pass** only when Harbor completes the selected tasks and emits a finite score; **fail** on missing/invalid score or Docker/Modal/agent infrastructure error | None established. Record the first successful release-candidate run with model ID, endpoint, benchmark/task revision, execution backend, and Harbor version. |
+| `swebench_pro` | Official resolved-task score for the explicitly identified public/held-out subset | **Pass** only when the official evaluator completes and emits a finite score; **fail** on missing/invalid score, unavailable data/image, or infrastructure error | None established. Record the first successful release-candidate run with model ID, endpoint, subset, dataset revision, image, and evaluator version. |
+| `taubench` | Official `pass@1`/success metric from the pinned environment (currently Banking) | **Pass** only when the simulator completes and emits a finite metric; **fail** on missing/invalid score or provider/simulator/tool infrastructure error | None established. Record the first successful release-candidate run with model ID, endpoint, environment, simulator revision, and harness version. |
+| `foodtruck` | Hosted submission and an official score returned by FoodTruck Bench | **Hosted-only by design.** Local `hosted_submission_required` is an explicit **not-run**, not a pass; release acceptance requires a hosted submission receipt/score or an explicitly documented waiver | No local numeric baseline exists. Record the hosted submission ID, model/version, endpoint or provider, evaluation period, and returned score when available. |
+
+Until a successful release-candidate run is recorded, the baseline status for that adapter is `not established`; it must not be inferred from another model, endpoint, benchmark release, or partial/failed run. For regression checks, compare only like-for-like records (same adapter, metric, task/subset, dataset/harness version, execution backend, and endpoint/model identity). The expected column in verification reports must contain the criterion above rather than `N/A`.
+
 ## Why this project exists
 
 These evaluations are fundamentally different:
