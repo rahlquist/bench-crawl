@@ -52,9 +52,13 @@ def build_install_plan() -> list[InstallItem]:
             "Requires Docker and any benchmark-specific images/data access.",
         ),
         InstallItem(
-            "taubench", "repository",
-            (("git", "clone", "https://github.com/sierra-research/tau-bench", "tau-bench"),),
-            "Installs the repository only; Python dependencies may be required separately.",
+            "taubench", "repository+venv",
+            (
+                ("git", "clone", "--branch", "v1.0.1", "https://github.com/sierra-research/tau2-bench", "tau2-bench"),
+                ("uv", "venv", "tau2-bench/.venv-tau2"),
+                ("uv", "pip", "install", "--python", "tau2-bench/.venv-tau2/bin/python", "-e", "tau2-bench"),
+            ),
+            "Official tau2-bench banking release; run with golden_retrieval for a local 65K-context endpoint.",
         ),
         InstallItem(
             "foodtruck", "hosted", notes="Closed-source hosted benchmark; no local installer exists.",

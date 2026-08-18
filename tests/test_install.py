@@ -26,6 +26,14 @@ class InstallPlanTests(unittest.TestCase):
         self.assertIn("harbor", output)
         self.assertIn("hosted-only", output)
 
+    def test_taubench_installer_pins_official_banking_release_and_venv(self):
+        taubench = next(item for item in build_install_plan() if item.name == "taubench")
+        self.assertEqual(taubench.kind, "repository+venv")
+        self.assertIn("--branch", taubench.commands[0])
+        self.assertIn("v1.0.1", taubench.commands[0])
+        self.assertEqual(taubench.commands[0][-1], "tau2-bench")
+        self.assertIn(".venv-tau2", " ".join(taubench.commands[1]))
+
     @patch("benchsuite.install.subprocess.run")
     def test_execute_runs_commands_and_skips_hosted_adapter(self, run):
         run.return_value.returncode = 0

@@ -1,0 +1,23 @@
+[default]
+base_url = "http://wimpy.home.lan:8080/v1"
+api_key = ""
+model = "qwen3-8-27b-ud-iq2-m"
+timeout_s = 2400
+results_dir = "/home/rahlquist/bench-crawl/results/tau-smoke"
+
+[default.env]
+OPENAI_API_KEY = ""
+OPENAI_BASE_URL = "http://wimpy.home.lan:8080/v1"
+OPENAI_API_BASE = "http://wimpy.home.lan:8080/v1"
+
+[benchmarks.taubench]
+enabled = true
+repo = "/home/rahlquist/bench-crawl/tau2-bench"
+env = "banking_knowledge"
+agent_strategy = "llm_agent"
+user_strategy = "user_simulator"
+retrieval_config = "golden_retrieval"
+task_ids = ["task_001"]
+max_retries = 0
+task_timeout = 2400
+max_concurrency = 1
