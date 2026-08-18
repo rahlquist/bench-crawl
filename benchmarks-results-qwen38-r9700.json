@@ -1,0 +1,60 @@
+{
+  "title": "Qwen3.8-27B Q4_K_M on AMD Radeon AI PRO R9700",
+  "measurement_kind": "measured",
+  "provenance": "native LiveCodeBench runner via Bench Crawl",
+  "model": {
+    "id": "qwen3-8-27b-q4-k-m",
+    "source": "ggml-org/Qwen3.8-27B-GGUF",
+    "quantization": "Q4_K_M",
+    "bytes": 18973870432,
+    "sha256": "31629f53165ab6a7dad8c9847dcfd1fdf55829dac1e6e748f4a68581b0033d34"
+  },
+  "hardware": {
+    "host": "self-hosted workstation",
+    "gpu": "AMD Radeon AI PRO R9700",
+    "backend": "ROCm/HIP",
+    "device": "ROCm0",
+    "gfx": "gfx1201",
+    "vram_mib": 32624,
+    "kernel": "7.2.0-rc7-1-cachyos-rc"
+  },
+  "server": {
+    "implementation": "llama.cpp via llama-swap",
+    "build": "10438",
+    "commit": "9d57ce456",
+    "context_tokens": 65536,
+    "kv_cache": "q4_0"
+  },
+  "endpoint": "self-hosted OpenAI-compatible endpoint",
+  "runs": [
+    {
+      "benchmark": "livecodebench",
+      "scenario": "codegeneration",
+      "release": "release_v2",
+      "coverage": {
+        "problems_run": 2,
+        "problems_in_release": 511,
+        "question_ids": ["2777", "2779"],
+        "coverage_fraction": 0.003913894324853229
+      },
+      "settings": {
+        "samples": 1,
+        "temperature": 0.2,
+        "max_tokens": 1200,
+        "openai_timeout_s": 240,
+        "evaluation_timeout_s": 6
+      },
+      "status": "ok",
+      "native_exit_code": 0,
+      "metric_name": "pass@1",
+      "metric_value": 1.0,
+      "elapsed_s": 157.8284752368927,
+      "artifact": "LiveCodeBench/output/qwen3-8-27b-q4-k-m/Scenario.codegeneration_1_0.2_eval.json"
+    }
+  ],
+  "limitations": [
+    "This is a two-problem smoke run, not a full 511-problem release score.",
+    "No long-context, MTP, or throughput measurement is claimed here.",
+    "Results are not directly comparable to the Intel Arc Pro B70 page without matched coverage and runtime settings."
+  ]
+}
